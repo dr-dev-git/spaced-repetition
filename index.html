@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Learning Log — Spaced Repetition</title>
+<style>
+  :root {
+    --bg:       #f5f6fa;
+    --card:     #ffffff;
+    --primary:  #4f6ef7;
+    --accent:   #22c55e;
+    --danger:   #ef4444;
+    --text:     #1e293b;
+    --muted:    #64748b;
+    --border:   #e2e8f0;
+    --phys:     #6366f1;
+    --neuro:    #0ea5e9;
+    --research: #f59e0b;
+    --general:  #8b5cf6;
+    --radius:   12px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+  }
+
+  /* ── Header ── */
+  header {
+    background: var(--primary);
+    color: #fff;
+    padding: 20px 32px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  header svg { flex-shrink: 0; }
+  header h1 { font-size: 1.4rem; font-weight: 700; letter-spacing: -.3px; }
+  header p  { font-size: .85rem; opacity: .8; margin-top: 2px; }
+
+  /* ── Layout ── */
+  main {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 28px 20px;
+    display: grid;
+    grid-template-columns: 360px 1fr;
+    gap: 24px;
+    align-items: start;
+  }
+  @media (max-width: 700px) { main { grid-template-columns: 1fr; } }
+
+  /* ── Cards ── */
+  .card {
+    background: var(--card);
+    border-radius: var(--radius);
+    box-shadow: 0 1px 4px rgba(0,0,0,.07);
+    padding: 24px;
+  }
+  .card h2 {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 18px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .card h2 .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--primary);
+    display: inline-block;
+  }
+
+  /* ── Form ── */
+  .form-group { margin-bottom: 16px; }
+  label {
+    display: block;
+    font-size: .8rem;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: .5px;
+    margin-bottom: 6px;
+  }
+  input[type="text"], input[type="date"], select, textarea {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1.5px solid var(--border);
+    border-radius: 8px;
+    font-size: .95rem;
+    font-family: inherit;
+    color: var(--text);
+    background: #fff;
+    transition: border-color .15s;
+    outline: none;
+  }
+  input:focus, select:focus, textarea:focus { border-color: var(--primary); }
+  textarea { resize: vertical; min-height: 72px; }
+
+  /* ── Interval preview ── */
+  .intervals {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 4px;
+  }
+  .interval-chip {
+    background: #eef2ff;
+    color: var(--primary);
+    font-size: .75rem;
+    font-weight: 600;
+    padding: 3px 9px;
+    border-radius: 20px;
+  }
+
+  /* ── Submit button ── */
+  button.submit {
+    width: 100%;
+    padding: 12px;
+    background: var(--primary);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 4px;
+    transition: opacity .15s, transform .1s;
+  }
+  button.submit:hover  { opacity: .9; }
+  button.submit:active { transform: scale(.98); }
+  button.submit:disabled { opacity: .5; cursor: not-allowed; }
+
+  /* ── Toast ── */
+  #toast {
+    position: fixed;
+    bottom: 28px; right: 28px;
+    background: #1e293b;
+    color: #fff;
+    padding: 12px 20px;
+    border-radius: 10px;
+    font-size: .9rem;
+    font-weight: 500;
+    box-shadow: 0 4px 20px rgba(0,0,0,.2);
+    opacity: 0;
+    transform: translateY(10px);
+    transition: opacity .25s, transform .25s;
+    pointer-events: none;
+    z-index: 999;
+    max-width: 320px;
+  }
+  #toast.show { opacity: 1; transform: translateY(0); }
+  #toast.error { background: var(--danger); }
+
+  /* ── Right column ── */
+  .right { display: flex; flex-direction: column; gap: 24px; }
+
+  /* ── Upcoming reviews ── */
+  .upcoming-list { display: flex; flex-direction: column; gap: 10px; }
+  .upcoming-empty { color: var(--muted); font-size: .9rem; text-align: center; padding: 24px 0; }
+
+  .upcoming-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+    border-radius: 10px;
+    border: 1.5px solid var(--border);
+    background: #fafbff;
+  }
+  .upcoming-item .date-badge {
+    flex-shrink: 0;
+    text-align: center;
+    background: var(--primary);
+    color: #fff;
+    border-radius: 8px;
+    padding: 6px 10px;
+    min-width: 52px;
+  }
+  .upcoming-item .date-badge .day-num  { font-size: 1.2rem; font-weight: 700; line-height: 1; }
+  .upcoming-item .date-badge .month    { font-size: .65rem; text-transform: uppercase; opacity: .85; }
+  .upcoming-item .today-badge {
+    background: var(--accent);
+  }
+  .upcoming-item .info .topic-name  { font-weight: 600; font-size: .95rem; }
+  .upcoming-item .info .meta        { font-size: .78rem; color: var(--muted); margin-top: 2px; }
+
+  /* ── Topic log ── */
+  .topic-list { display: flex; flex-direction: column; gap: 12px; }
+  .topic-card {
+    border: 1.5px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+    position: relative;
+  }
+  .topic-card .tc-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .topic-card .tc-name { font-weight: 600; font-size: .98rem; }
+  .topic-card .tc-date { font-size: .78rem; color: var(--muted); margin-top: 3px; }
+  .topic-card .tc-notes { font-size: .82rem; color: var(--muted); margin-top: 6px; font-style: italic; }
+  .cat-badge {
+    font-size: .7rem;
+    font-weight: 700;
+    padding: 3px 9px;
+    border-radius: 20px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .cat-Physiology  { background: #eef2ff; color: var(--phys); }
+  .cat-Clinical    { background: #e0f2fe; color: var(--neuro); }
+  .cat-Research    { background: #fef3c7; color: var(--research); }
+  .cat-General     { background: #f3e8ff; color: var(--general); }
+
+  .tc-reviews {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin-top: 10px;
+  }
+  .review-pill {
+    font-size: .72rem;
+    padding: 2px 8px;
+    border-radius: 20px;
+    border: 1.5px solid var(--border);
+    color: var(--muted);
+    background: #f8fafc;
+  }
+  .review-pill.done    { text-decoration: line-through; opacity: .45; }
+  .review-pill.today   { background: #dcfce7; color: #15803d; border-color: #86efac; font-weight: 600; }
+  .review-pill.soon    { background: #eff6ff; color: #2563eb; border-color: #93c5fd; }
+
+  .btn-delete {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--muted);
+    padding: 2px 4px;
+    border-radius: 6px;
+    font-size: .85rem;
+    line-height: 1;
+    transition: color .15s, background .15s;
+  }
+  .btn-delete:hover { color: var(--danger); background: #fee2e2; }
+
+  /* ── Section headings ── */
+  .section-title {
+    font-size: .78rem;
+    font-weight: 700;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: .6px;
+    margin-bottom: 12px;
+  }
+  .empty-log {
+    color: var(--muted);
+    font-size: .9rem;
+    text-align: center;
+    padding: 32px 0;
+  }
+
+  /* ── Stats bar ── */
+  .stats {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+  .stat-box {
+    flex: 1;
+    background: var(--bg);
+    border-radius: 10px;
+    padding: 12px 14px;
+    text-align: center;
+  }
+  .stat-box .val { font-size: 1.5rem; font-weight: 700; color: var(--primary); }
+  .stat-box .lbl { font-size: .72rem; color: var(--muted); margin-top: 2px; text-transform: uppercase; letter-spacing: .4px; }
+</style>
+</head>
+<body>
+
+<header>
+  <svg width="36" height="36" viewBox="0 0 36 36" fill="none">
+    <rect width="36" height="36" rx="10" fill="rgba(255,255,255,.15)"/>
+    <path d="M10 26L14 18L18 22L22 14L26 18" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="26" cy="12" r="3" fill="white" opacity=".7"/>
+  </svg>
+  <div>
+    <h1>Learning Log</h1>
+    <p>Spaced repetition — auto-syncs to Apple Calendar</p>
+  </div>
+</header>
+
+<main>
+  <!-- ── LEFT: Log form ── -->
+  <div class="card">
+    <h2><span class="dot"></span> Log a Topic</h2>
+
+    <div class="form-group">
+      <label>Topic / Concept</label>
+      <input type="text" id="topicInput" placeholder="e.g. Regulation of Respiration" />
+    </div>
+
+    <div class="form-group">
+      <label>Category</label>
+      <select id="categoryInput">
+        <option value="Physiology">Physiology</option>
+        <option value="Clinical">Clinical / NCS / EMG</option>
+        <option value="Research">Research / Thesis</option>
+        <option value="General">General</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label>Date Learned</label>
+      <input type="date" id="dateInput" />
+    </div>
+
+    <div class="form-group">
+      <label>Notes (optional)</label>
+      <textarea id="notesInput" placeholder="Key points, source, page numbers…"></textarea>
+    </div>
+
+    <div class="form-group">
+      <label>Review schedule</label>
+      <div class="intervals" id="intervalPreview"></div>
+    </div>
+
+    <button class="submit" id="submitBtn" onclick="submitTopic()">
+      Log &amp; Schedule Reviews
+    </button>
+  </div>
+
+  <!-- ── RIGHT ── -->
+  <div class="right">
+
+    <!-- Upcoming reviews -->
+    <div class="card">
+      <h2><span class="dot" style="background:var(--accent)"></span> Upcoming Reviews</h2>
+      <div class="upcoming-list" id="upcomingList">
+        <div class="upcoming-empty">No reviews scheduled yet.</div>
+      </div>
+    </div>
+
+    <!-- All topics -->
+    <div class="card">
+      <h2><span class="dot" style="background:var(--muted)"></span> All Topics</h2>
+      <div class="stats" id="statsBar" style="display:none">
+        <div class="stat-box"><div class="val" id="statTotal">0</div><div class="lbl">Logged</div></div>
+        <div class="stat-box"><div class="val" id="statToday">0</div><div class="lbl">Due Today</div></div>
+        <div class="stat-box"><div class="val" id="statSoon">0</div><div class="lbl">Due This Week</div></div>
+      </div>
+      <div class="topic-list" id="topicList">
+        <div class="empty-log">Topics you log will appear here.</div>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<div id="toast"></div>
+
+<script>
+const API = 'http://localhost:5050';
+const INTERVALS = [1, 3, 7, 14, 30, 60];
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function todayStr() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function addDays(dateStr, n) {
+  const d = new Date(dateStr + 'T00:00:00');
+  d.setDate(d.getDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+function formatDate(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00');
+  return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function dayMonth(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00');
+  return {
+    day:   d.getDate(),
+    month: d.toLocaleString('en-IN', { month: 'short' }),
+    year:  d.getFullYear()
+  };
+}
+
+function showToast(msg, isError = false) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'show' + (isError ? ' error' : '');
+  clearTimeout(window._toastTimer);
+  window._toastTimer = setTimeout(() => { t.className = ''; }, 3200);
+}
+
+// ── Interval preview ─────────────────────────────────────────────────────────
+
+function updateIntervalPreview() {
+  const dateStr = document.getElementById('dateInput').value || todayStr();
+  const container = document.getElementById('intervalPreview');
+  container.innerHTML = INTERVALS.map(d => {
+    const label = `Day ${d}: ${formatDate(addDays(dateStr, d))}`;
+    return `<span class="interval-chip">${label}</span>`;
+  }).join('');
+}
+
+// ── Submit ────────────────────────────────────────────────────────────────────
+
+async function submitTopic() {
+  const topic    = document.getElementById('topicInput').value.trim();
+  const category = document.getElementById('categoryInput').value;
+  const date     = document.getElementById('dateInput').value || todayStr();
+  const notes    = document.getElementById('notesInput').value.trim();
+
+  if (!topic) { showToast('Please enter a topic name.', true); return; }
+
+  const btn = document.getElementById('submitBtn');
+  btn.disabled = true;
+  btn.textContent = 'Adding to calendar…';
+
+  try {
+    const res  = await fetch(`${API}/add-topic`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ topic, category, date, notes })
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast(`✓ "${topic}" logged. 6 review events added to Apple Calendar.`);
+      document.getElementById('topicInput').value  = '';
+      document.getElementById('notesInput').value  = '';
+      document.getElementById('dateInput').value   = todayStr();
+      updateIntervalPreview();
+      loadTopics();
+    } else {
+      showToast(data.error || 'Something went wrong.', true);
+    }
+  } catch (e) {
+    showToast('Cannot reach server — please launch start.command first.', true);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Log & Schedule Reviews';
+  }
+}
+
+// ── Delete ────────────────────────────────────────────────────────────────────
+
+async function deleteTopic(id, name) {
+  if (!confirm(`Remove "${name}" from your log?\n(Calendar events will remain — delete them manually if needed.)`)) return;
+  try {
+    await fetch(`${API}/delete-topic`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id })
+    });
+    showToast(`"${name}" removed from log.`);
+    loadTopics();
+  } catch (e) {
+    showToast('Cannot reach server — please launch start.command first.', true);
+  }
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
+
+function renderPill(dateStr) {
+  const today  = todayStr();
+  const inWeek = addDays(today, 7);
+  let cls = 'review-pill';
+  if (dateStr < today)       cls += ' done';
+  else if (dateStr === today) cls += ' today';
+  else if (dateStr <= inWeek) cls += ' soon';
+  const label = dateStr === today ? `Today` : formatDate(dateStr);
+  return `<span class="${cls}" title="${dateStr}">${label}</span>`;
+}
+
+function renderTopics(topics) {
+  const list = document.getElementById('topicList');
+  const stats = document.getElementById('statsBar');
+  if (!topics.length) {
+    list.innerHTML = '<div class="empty-log">Topics you log will appear here.</div>';
+    stats.style.display = 'none';
+    return;
+  }
+  stats.style.display = 'flex';
+  const today  = todayStr();
+  const inWeek = addDays(today, 7);
+  let dueToday = 0, dueSoon = 0;
+  topics.forEach(t => {
+    t.review_dates.forEach(d => {
+      if (d === today) dueToday++;
+      else if (d > today && d <= inWeek) dueSoon++;
+    });
+  });
+  document.getElementById('statTotal').textContent = topics.length;
+  document.getElementById('statToday').textContent = dueToday;
+  document.getElementById('statSoon').textContent  = dueSoon;
+
+  list.innerHTML = topics.map(t => `
+    <div class="topic-card">
+      <div class="tc-header">
+        <div>
+          <div class="tc-name">${escHtml(t.topic)}</div>
+          <div class="tc-date">Learned ${formatDate(t.date_learned)}</div>
+          ${t.notes ? `<div class="tc-notes">${escHtml(t.notes)}</div>` : ''}
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+          <span class="cat-badge cat-${t.category}">${t.category}</span>
+          <button class="btn-delete" onclick="deleteTopic(${t.id}, '${escJs(t.topic)}')" title="Remove">✕</button>
+        </div>
+      </div>
+      <div class="tc-reviews">
+        ${t.review_dates.map(renderPill).join('')}
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderUpcoming(topics) {
+  const today  = todayStr();
+  const cutoff = addDays(today, 14);
+  const items  = [];
+  topics.forEach(t => {
+    t.review_dates.forEach(d => {
+      if (d >= today && d <= cutoff) {
+        items.push({ date: d, topic: t.topic, category: t.category });
+      }
+    });
+  });
+  items.sort((a, b) => a.date.localeCompare(b.date));
+
+  const list = document.getElementById('upcomingList');
+  if (!items.length) {
+    list.innerHTML = '<div class="upcoming-empty">No reviews in the next 14 days.</div>';
+    return;
+  }
+  list.innerHTML = items.map(item => {
+    const { day, month } = dayMonth(item.date);
+    const isToday = item.date === today;
+    return `
+      <div class="upcoming-item">
+        <div class="date-badge ${isToday ? 'today-badge' : ''}">
+          <div class="day-num">${day}</div>
+          <div class="month">${isToday ? 'Today' : month}</div>
+        </div>
+        <div class="info">
+          <div class="topic-name">${escHtml(item.topic)}</div>
+          <div class="meta">${item.category}</div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+// ── Load ──────────────────────────────────────────────────────────────────────
+
+async function loadTopics() {
+  try {
+    const res    = await fetch(`${API}/topics`);
+    const data   = await res.json();
+    const topics = data.topics || [];
+    renderTopics(topics);
+    renderUpcoming(topics);
+  } catch (e) {
+    // server may not be ready yet
+  }
+}
+
+// ── Sanitise ──────────────────────────────────────────────────────────────────
+
+function escHtml(str) {
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function escJs(str) {
+  return str.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('dateInput').value = todayStr();
+  updateIntervalPreview();
+  document.getElementById('dateInput').addEventListener('change', updateIntervalPreview);
+  loadTopics();
+  setInterval(loadTopics, 30000); // refresh every 30s
+});
+
+// Allow Enter key in topic field
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && document.activeElement.id === 'topicInput') submitTopic();
+});
+</script>
+</body>
+</html>
