@@ -113,6 +113,28 @@ class Handler(http.server.BaseHTTPRequestHandler):
             save_data(data)
             self._send_json({'success': True, 'entry': entry})
 
+        elif self.path == '/log-revision':
+            topic_id         = body.get('id')
+            review_date      = body.get('review_date')
+            duration_minutes = int(body.get('duration_minutes', 0))
+
+            data = load_data()
+            for topic in data['topics']:
+                if topic['id'] == topic_id:
+                    if 'revisions' not in topic:
+                        topic['revisions'] = []
+                    # Avoid duplicate entries for same review_date
+                    topic['revisions'] = [r for r in topic['revisions'] if r['review_date'] != review_date]
+                    topic['revisions'].append({
+                        'review_date':      review_date,
+                        'revised_at':       datetime.now().isoformat(),
+                        'duration_minutes': duration_minutes
+                    })
+                    save_data(data)
+                    self._send_json({'success': True})
+                    return
+            self._send_json({'error': 'Topic not found'}, 404)
+
         elif self.path == '/delete-topic':
             topic_id = body.get('id')
             data = load_data()

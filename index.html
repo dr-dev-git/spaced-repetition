@@ -189,6 +189,83 @@
   }
   .upcoming-item .info .topic-name  { font-weight: 600; font-size: .95rem; }
   .upcoming-item .info .meta        { font-size: .78rem; color: var(--muted); margin-top: 2px; }
+  .upcoming-item.revised { opacity: .55; background: #f0fdf4; border-color: #bbf7d0; }
+  .upcoming-item.revised .date-badge { background: var(--accent); }
+
+  /* revision log inline form */
+  .rev-form {
+    display: none;
+    align-items: center;
+    gap: 6px;
+    margin-top: 8px;
+  }
+  .rev-form.open { display: flex; }
+  .rev-form input[type="number"] {
+    width: 72px;
+    padding: 5px 8px;
+    border: 1.5px solid var(--border);
+    border-radius: 6px;
+    font-size: .85rem;
+    font-family: inherit;
+    outline: none;
+  }
+  .rev-form input[type="number"]:focus { border-color: var(--primary); }
+  .rev-form label { font-size: .8rem; color: var(--muted); white-space: nowrap; }
+  .btn-done {
+    flex-shrink: 0;
+    margin-left: auto;
+    background: none;
+    border: 1.5px solid var(--accent);
+    color: #15803d;
+    font-size: .78rem;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background .15s;
+  }
+  .btn-done:hover { background: #dcfce7; }
+  .btn-done.revised-tag {
+    border-color: #bbf7d0;
+    background: #dcfce7;
+    cursor: default;
+    color: #15803d;
+  }
+  .btn-confirm {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 5px 12px;
+    font-size: .82rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity .15s;
+  }
+  .btn-confirm:hover { opacity: .88; }
+
+  /* ── Revision history in topic card ── */
+  .tc-revlog {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .rev-entry {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+    border-radius: 20px;
+    padding: 3px 10px;
+    font-size: .72rem;
+    color: #15803d;
+    font-weight: 600;
+  }
 
   /* ── Topic log ── */
   .topic-list { display: flex; flex-direction: column; gap: 12px; }
@@ -474,15 +551,44 @@ async function deleteTopic(id, name) {
 
 // ── Render ────────────────────────────────────────────────────────────────────
 
-function renderPill(dateStr) {
+function renderPill(dateStr, revised = false) {
   const today  = todayStr();
   const inWeek = addDays(today, 7);
   let cls = 'review-pill';
-  if (dateStr < today)       cls += ' done';
+  if (revised)               cls += ' done';
+  else if (dateStr < today)  cls += ' done';
   else if (dateStr === today) cls += ' today';
   else if (dateStr <= inWeek) cls += ' soon';
-  const label = dateStr === today ? `Today` : formatDate(dateStr);
+  const label = revised ? `✓ ${formatDate(dateStr)}` : dateStr === today ? 'Today' : formatDate(dateStr);
   return `<span class="${cls}" title="${dateStr}">${label}</span>`;
+}
+
+function toggleRevForm(i) {
+  const form = document.getElementById(`rev-form-${i}`);
+  form.classList.toggle('open');
+  if (form.classList.contains('open')) {
+    document.getElementById(`rev-min-${i}`).focus();
+  }
+}
+
+async function submitRevision(topicId, reviewDate, i) {
+  const mins = parseInt(document.getElementById(`rev-min-${i}`).value) || 0;
+  try {
+    const res  = await fetch(`${API}/log-revision`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: topicId, review_date: reviewDate, duration_minutes: mins })
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast(`✓ Revision logged${mins ? ' — ' + mins + ' min' : ''}`);
+      loadTopics();
+    } else {
+      showToast(data.error || 'Could not save.', true);
+    }
+  } catch (e) {
+    showToast('Cannot reach server — please launch start.command first.', true);
+  }
 }
 
 function renderTopics(topics) {
@@ -507,7 +613,19 @@ function renderTopics(topics) {
   document.getElementById('statToday').textContent = dueToday;
   document.getElementById('statSoon').textContent  = dueSoon;
 
-  list.innerHTML = topics.map(t => `
+  list.innerHTML = topics.map(t => {
+    const revisions = t.revisions || [];
+    const revisedDates = new Set(revisions.map(r => r.review_date));
+    const totalMins = revisions.reduce((s, r) => s + (r.duration_minutes || 0), 0);
+    const revLog = revisions.length ? `
+      <div class="tc-revlog">
+        ${revisions.map(r => {
+          const dayNum = Math.round((new Date(r.review_date) - new Date(t.date_learned)) / 86400000);
+          return `<span class="rev-entry">✓ Day ${dayNum}${r.duration_minutes ? ' · ' + r.duration_minutes + ' min' : ''}</span>`;
+        }).join('')}
+        ${totalMins > 0 ? `<span class="rev-entry" style="background:#eff6ff;border-color:#bfdbfe;color:#1d4ed8">⏱ ${totalMins} min total</span>` : ''}
+      </div>` : '';
+    return `
     <div class="topic-card">
       <div class="tc-header">
         <div>
@@ -521,10 +639,11 @@ function renderTopics(topics) {
         </div>
       </div>
       <div class="tc-reviews">
-        ${t.review_dates.map(renderPill).join('')}
+        ${t.review_dates.map(d => renderPill(d, revisedDates.has(d))).join('')}
       </div>
-    </div>
-  `).join('');
+      ${revLog}
+    </div>`;
+  }).join('');
 }
 
 function renderUpcoming(topics) {
@@ -534,7 +653,9 @@ function renderUpcoming(topics) {
   topics.forEach(t => {
     t.review_dates.forEach(d => {
       if (d >= today && d <= cutoff) {
-        items.push({ date: d, topic: t.topic, category: t.category });
+        const revisions = t.revisions || [];
+        const rev = revisions.find(r => r.review_date === d);
+        items.push({ date: d, topic: t.topic, category: t.category, id: t.id, revised: !!rev, duration: rev ? rev.duration_minutes : null });
       }
     });
   });
@@ -545,18 +666,31 @@ function renderUpcoming(topics) {
     list.innerHTML = '<div class="upcoming-empty">No reviews in the next 14 days.</div>';
     return;
   }
-  list.innerHTML = items.map(item => {
+  list.innerHTML = items.map((item, i) => {
     const { day, month } = dayMonth(item.date);
     const isToday = item.date === today;
+    const revisedTag = item.revised
+      ? `<span class="btn-done revised-tag">✓ ${item.duration ? item.duration + ' min' : 'Done'}</span>`
+      : `<button class="btn-done" onclick="toggleRevForm(${i})">Mark Done</button>`;
     return `
-      <div class="upcoming-item">
+      <div class="upcoming-item ${item.revised ? 'revised' : ''}" id="upcoming-${i}">
         <div class="date-badge ${isToday ? 'today-badge' : ''}">
           <div class="day-num">${day}</div>
           <div class="month">${isToday ? 'Today' : month}</div>
         </div>
-        <div class="info">
-          <div class="topic-name">${escHtml(item.topic)}</div>
-          <div class="meta">${item.category}</div>
+        <div class="info" style="flex:1">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+            <div>
+              <div class="topic-name">${escHtml(item.topic)}</div>
+              <div class="meta">${item.category}</div>
+            </div>
+            ${revisedTag}
+          </div>
+          <div class="rev-form" id="rev-form-${i}">
+            <label>Time taken:</label>
+            <input type="number" id="rev-min-${i}" min="1" max="300" placeholder="mins" />
+            <button class="btn-confirm" onclick="submitRevision(${item.id}, '${item.date}', ${i})">✓ Save</button>
+          </div>
         </div>
       </div>`;
   }).join('');
